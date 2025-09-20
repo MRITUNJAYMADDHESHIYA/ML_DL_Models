@@ -8,6 +8,7 @@ import pandas as pd
 
 
 
+
 SYMBOL         = "USTECm"
 TIMEFRAME      = mt5.TIMEFRAME_M1
 RISK           = 0.02              # 2% per trade
