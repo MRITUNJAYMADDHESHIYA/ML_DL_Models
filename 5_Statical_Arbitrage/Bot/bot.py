@@ -10,9 +10,9 @@ symbol2          = 'USTECm'
 timeframe        = mt5.TIMEFRAME_M1
 period           = 500
 TRADE_START      = time(19, 0)    # IST 19:00
-TRADE_END        = time(23, 40)
+TRADE_END        = time(23, 50)
 ratio            = 0.94           # cointegration ratio
-bollinger_period = 200
+bollinger_period = 50
 num_std          = 1.0           # threshold
 max_trade        = 3
 strategy_id      = 12345
@@ -142,20 +142,28 @@ def close_all_positions(symbol):
     return results
 
 ######################## Plot Spread + SMA + Bands ####################
-def plot_spread(spread_df):
-    spread_df['sma'] = spread_df['spread'].rolling(bollinger_period).mean()
-    spread_df['std'] = spread_df['spread'].rolling(bollinger_period).std()
+import matplotlib.pyplot as plt
+plt.ion()  # turn on interactive mode
+fig, ax = plt.subplots(figsize=(12,6))
+
+def plot_spread_realtime(spread_df):
+    ax.clear()
+    spread_df['sma']   = spread_df['spread'].rolling(bollinger_period).mean()
+    spread_df['std']   = spread_df['spread'].rolling(bollinger_period).std()
     spread_df['upper'] = spread_df['sma'] + num_std * spread_df['std']
     spread_df['lower'] = spread_df['sma'] - num_std * spread_df['std']
 
-    plt.figure(figsize=(12,6))
-    plt.plot(spread_df['time'], spread_df['spread'], label='Spread', color='blue')
-    plt.plot(spread_df['time'], spread_df['sma'], label='SMA', color='orange')
-    plt.plot(spread_df['time'], spread_df['upper'], label='Upper Band', color='green', linestyle='--')
-    plt.plot(spread_df['time'], spread_df['lower'], label='Lower Band', color='red', linestyle='--')
-    plt.legend()
-    plt.title("Spread with SMA & Bollinger Bands")
-    plt.show()
+    ax.plot(spread_df['time'], spread_df['spread'], label='Spread', color='blue')
+    ax.plot(spread_df['time'], spread_df['sma'], label='SMA', color='orange')
+    ax.plot(spread_df['time'], spread_df['upper'], label='Upper Band', color='green', linestyle='--')
+    ax.plot(spread_df['time'], spread_df['lower'], label='Lower Band', color='red', linestyle='--')
+
+    ax.legend()
+    ax.set_title("Spread with SMA & Bollinger Bands")
+
+    plt.draw()
+    plt.pause(0.01)  # brief pause to refresh the plot
+
 
 
 ######################## Main function ###############################
@@ -249,5 +257,5 @@ if __name__ == '__main__':
         print('Entries:', entries, 'Exits:', exits)
         print('---\n')
 
-        plot_spread(spread_df)
-        #break
+        if datetime.now().second % 10 == 0:  # update every 10 sec
+            plot_spread_realtime(spread_df)
