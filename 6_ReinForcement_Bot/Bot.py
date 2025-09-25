@@ -49,10 +49,7 @@ class TradingEnv(gym.Env):
         self.done              = False
 
         self.action_space      = spaces.Discrete(3)  # 0 hold, 1 buy, 2 sell
-        self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf,
-            shape=(lookback, df.shape[1]), dtype=np.float32
-        )
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(lookback, df.shape[1]), dtype=np.float32)
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
