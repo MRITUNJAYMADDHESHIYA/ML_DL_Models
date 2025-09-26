@@ -1,0 +1,26 @@
+The Fourier Transform (FT) is a mathematical operation that transforms a signal (or function) from the time domain into the frequency domain.
+
+Uses of Fourier Transform:-
+Signal Processing
+Noise reduction
+Filtering (low-pass, high-pass, etc.)
+Compression (e.g., MP3, JPEG)
+
+Engineering & Physics
+Solving differential equations
+Analyzing vibrations and waves
+
+Quantum mechanics (wave functions)
+Medical Imaging
+MRI scans use Fourier transforms to reconstruct images from raw data.
+
+Communication Systems
+Modulation/demodulation in radios, Wi-Fi, and 5G
+Spectrum analysis
+
+Image Processing
+Edge detection, pattern recognition, watermarking
+
+
+
+
