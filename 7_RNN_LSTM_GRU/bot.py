@@ -1,3 +1,5 @@
+#1. I want to see the x and y as output after creating sequences.
+
 import os
 import time
 import math
@@ -17,26 +19,27 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 from sklearn.decomposition import PCA
 
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Bidirectional
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Dense, Dropout, LSTM, GRU, SimpleRNN, BatchNormalization
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
 ############################ Global variables ############################################
-SYMBOL           = "XAUUSDm"           # change if your broker uses different symbol
+SYMBOL           = "BTCUSDm"           # change if your broker uses different symbol
 TIMEFRAME        = mt5.TIMEFRAME_M5
-LOOKBACK         = 24                  # 24*5 = 120 minutes (2 hours)
-PREDICT_HORIZON  = 1                   # next 5 minute direction
-BATCH_SIZE       = 64
-EPOCHS           = 30
-TEST_SIZE        = 0.2
+LOOKBACK         = 60                  #60*5 = 300 minutes (5 hours) using this make the prediction
+PREDICT_HORIZON  = 1                   #next 5 minute direction prediction
+BATCH_SIZE       = 64                  #number of samples processed before updating weights.
+EPOCHS           = 30                  #30 means the model will see the training data 30 times
+TEST_SIZE        = 0.2                 #20% data for testing
 RANDOM_STATE     = 42
 MODEL_DIR        = "models"
-os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)  #create model directory if not exists
 
 ########################## Risk Factors ##################################################
 LOT            = 0.01
-SL_PIPS        = 100      # stop loss in pips (for XAUUSD 1 pip typically = 0.01 on many brokers — verify)
-TP_PIPS        = 100
+SL_PIPS        = 5000      # stop loss in pips (for XAUUSD 1 pip typically = 0.01 on many brokers — verify)
+TP_PIPS        = 5000
 MAX_POS        = 1       # max concurrent positions
 RISK_PER_TRADE = 0.01    # fraction of account balance — (used for position sizing if implemented)
 
@@ -117,7 +120,7 @@ class MT5Connector:
             "price": mt5.symbol_info_tick(mt5.positions_get(ticket=ticket)[0].symbol).bid
         })
 
-############################### Feature Engineering(1m candle) ##########################################
+############################### Feature Engineering(5m candle) ##########################################
 class FeatureEngineer:
     def __init__(self):
         pass
@@ -147,7 +150,8 @@ class FeatureEngineer:
         df.ffill(inplace=True)
         return df
 
-    def create_sequences(self, df, feature_cols, lookback=60, horizon=1): #horizon → how far ahead you want to predict
+################################## Most Important in Neural Network ##########################################
+    def create_sequences(self, df, feature_cols, lookback=60, horizon=1): #horizon → how far ahead you want to predict and lookback 60 candles
         data = df[feature_cols].values
         closes = df['close'].values
         X, y = [], []
@@ -156,40 +160,81 @@ class FeatureEngineer:
             future_close = closes[i + horizon - 1]
             cur_close    = closes[i - 1]
             label = 1 if future_close > cur_close else 0
-            X.append(seq)   #last 60 candles
-            y.append(label) #1->up 0->down
-        return np.array(X), np.array(y)
+            X.append(seq)   #last 60 candles X shape: (n_samples, lookback, n_features)
+            y.append(label) #1->up 0->down   y shape: (n_samples,) → labels (0 or 1).
+        
+        X = np.array(X)
+        y = np.array(y)
+        print(f"Sequence shapes -> X: {X.shape}, y: {y.shape}")
+        return X, y
 
 ####################################### Models(LSTM/GRU/RNN) ##########################################
 @dataclass
 class ModelConfig:
-    lookback:   int
-    n_features: int
-    units:      int   = 64
-    dropout:    float = 0.2
-    lr:         float = 1e-3
+    lookback:   int            # number of past candles (sequence length)
+    n_features: int            # number of input features (open, high, low, close, volume, etc.)
+    units:      int   = 64     # number of neurons in hidden layers (default 64)
+    dropout:    float = 0.2    # dropout rate to prevent overfitting (default 20%)
+    lr:         float = 1e-3   # learning rate for optimizer (default 0.001)
+
 
 class RnnClassifier:
-    def __init__(self, cfg: ModelConfig, rnn_type='lstm'):
-        self.cfg      = cfg
-        self.rnn_type = rnn_type.lower()
-        self.model    = self._build()
+    def __init__(self, cfg: ModelConfig, rnn_type='lstm', bidirectional=True, stacked=True):
+        self.cfg           = cfg
+        self.rnn_type      = rnn_type.lower()
+        self.bidirectional = bidirectional
+        self.stacked       = stacked
+        self.model         = self._build()
 
     def _build(self):
         model = Sequential()
+        units = self.cfg.units
+
+        # First RNN layer
+        rnn_layer = None
         if self.rnn_type == 'lstm':
-            model.add(LSTM(self.cfg.units, input_shape=(self.cfg.lookback, self.cfg.n_features)))
+            rnn_layer = LSTM(units, return_sequences=self.stacked, input_shape=(self.cfg.lookback, self.cfg.n_features))
         elif self.rnn_type == 'gru':
-            model.add(GRU(self.cfg.units, input_shape=(self.cfg.lookback, self.cfg.n_features)))
+            rnn_layer = GRU(units, return_sequences=self.stacked, input_shape=(self.cfg.lookback, self.cfg.n_features))
         elif self.rnn_type == 'rnn':
-            model.add(SimpleRNN(self.cfg.units, input_shape=(self.cfg.lookback, self.cfg.n_features)))
+            rnn_layer = SimpleRNN(units, return_sequences=self.stacked, input_shape=(self.cfg.lookback, self.cfg.n_features))
         else:
             raise ValueError("rnn_type must be one of 'lstm','gru','rnn'")
+
+        if self.bidirectional:
+            model.add(Bidirectional(rnn_layer))
+        else:
+            model.add(rnn_layer)
+
         model.add(BatchNormalization())
         if self.cfg.dropout > 0:
             model.add(Dropout(self.cfg.dropout))
+
+        # Second stacked layer if stacked=True
+        if self.stacked:
+            rnn_layer2 = None
+            if self.rnn_type == 'lstm':
+                rnn_layer2 = LSTM(units, return_sequences=False)
+            elif self.rnn_type == 'gru':
+                rnn_layer2 = GRU(units, return_sequences=False)
+            elif self.rnn_type == 'rnn':
+                rnn_layer2 = SimpleRNN(units, return_sequences=False)
+            
+            if self.bidirectional:
+                model.add(Bidirectional(rnn_layer2))
+            else:
+                model.add(rnn_layer2)
+
+            model.add(BatchNormalization())
+            if self.cfg.dropout > 0:
+                model.add(Dropout(self.cfg.dropout))
+
+        # Dense layers
+        model.add(Dense(64, activation='relu'))
+        model.add(Dropout(self.cfg.dropout))
         model.add(Dense(32, activation='relu'))
         model.add(Dense(1, activation='sigmoid'))  # binary classification
+
         opt = tf.keras.optimizers.Adam(self.cfg.lr)
         model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])
         return model
@@ -221,82 +266,6 @@ class RnnClassifier:
         obj.model = tf.keras.models.load_model(path)
         return obj
 
-############################################## Backtester ##########################################
-class SimpleBacktester:
-    def __init__(self, df, feature_cols, model: RnnClassifier, scaler=None, lookback=LOOKBACK, horizon=PREDICT_HORIZON):
-        self.df           = df.reset_index(drop=True).copy()
-        self.feature_cols = feature_cols
-        self.model        = model
-        self.scaler       = scaler
-        self.lookback     = lookback
-        self.horizon      = horizon
-
-    def run(self, X, y, threshold=0.5):
-        preds_proba = self.model.predict_proba(X)
-        preds       = (preds_proba >= threshold).astype(int)
-        # Map each sample index back to dataframe index:
-        start_idx   = self.lookback
-        trades      = []
-        for i, pred in enumerate(preds):
-            idx = start_idx + i  # this corresponds to the "current" bar used to generate signal
-            entry_price = self.df.loc[idx, 'close']
-            # Define SL/TP in price terms (convert pips appropriately)
-            pip_value = 0.01  # adjust per broker; XAU pip mapping varies, verify with your broker
-            sl = SL_PIPS * pip_value
-            tp = TP_PIPS * pip_value
-            if pred == 1:  # long
-                exit_price = entry_price + tp
-                stop_price = entry_price - sl
-            else:  # short
-                exit_price = entry_price - tp
-                stop_price = entry_price + sl
-
-            # Simulate next horizon candles to see whether SL or TP hit first
-            window = self.df.loc[idx+1: idx + self.horizon + 60]  # look ahead window, safety margin
-            hit = None
-            hit_price = None
-            for _, r in window.iterrows():
-                high = r['high']
-                low = r['low']
-                if pred == 1:
-                    if low <= stop_price:
-                        hit = 'SL'
-                        hit_price = stop_price
-                        break
-                    if high >= exit_price:
-                        hit = 'TP'
-                        hit_price = exit_price
-                        break
-                else:
-                    if high >= stop_price:
-                        hit = 'SL'
-                        hit_price = stop_price
-                        break
-                    if low <= exit_price:
-                        hit = 'TP'
-                        hit_price = exit_price
-                        break
-            # If neither hit in window, mark as 'NoHit' and use close after horizon
-            if hit is None:
-                final_idx = min(idx + self.horizon, len(self.df)-1)
-                hit       = 'Close'
-                hit_price = self.df.loc[final_idx, 'close']
-
-            pnl = (hit_price - entry_price) if pred == 1 else (entry_price - hit_price)
-            trades.append({'idx': idx, 'pred': pred, 'entry': entry_price, 'exit': hit_price, 'type': hit, 'pnl': pnl})
-        trades_df  = pd.DataFrame(trades)
-        total_pips = trades_df['pnl'].sum() / 0.01  # convert to pip units (if pip_value=0.01)
-        wins       = trades_df[trades_df['pnl'] > 0].shape[0]
-        losses     = trades_df[trades_df['pnl'] <= 0].shape[0]
-        ret = {
-            'trades':     trades_df,
-            'total_pips': total_pips,
-            'wins':       wins,
-            'losses':     losses,
-            'win_rate':   wins / max(1, wins + losses)
-        }
-        return ret
-
 ################################ Live Trading ##########################################
 class LiveTrader:
     def __init__(self, mt5conn: MT5Connector, model: RnnClassifier, scaler, pca, feature_cols, lookback=LOOKBACK):
@@ -317,23 +286,33 @@ class LiveTrader:
         df = self.get_latest_df(bars=self.lookback + 10)
         fe = FeatureEngineer()
         df = fe.add_indicators(df)
-        # Build a single sequence
+        ################################################ Build a single sequence
         seq_df = df.tail(self.lookback)
         X = seq_df[self.feature_cols].values.astype(np.float32)
-        X = np.expand_dims(X, 0)
-        # Optional scaling per feature (if scaler is fitted)
-        if self.scaler and self.pca:
-            X_flat   = X.reshape(-1, X.shape[1])
+        ########################################### Optional scaling per feature (if scaler is fitted)
+        if self.scaler and hasattr(self, 'pca'):
+            # Flatten -> scale -> PCA -> reshape
+            X_flat = X.reshape(-1, X.shape[1])
             X_scaled = self.scaler.transform(X_flat)
-            X_pca    = self.pca.transform(X_scaled)
-            X        = X_pca.reshape(1, X.shape[0], X_pca.shape[1])
+            X_pca = self.pca.transform(X_scaled)
+            X = X_pca.reshape(1, self.lookback, X_pca.shape[1])
+        elif self.scaler:
+            X_flat = X.reshape(-1, X.shape[1])
+            X_scaled = self.scaler.transform(X_flat)
+            X = X_scaled.reshape(1, self.lookback, X.shape[1])
         else:
-            X        = np.expand_dims(X, 0)
-            # No global transform to avoid mismatch — assume model uses raw features or the scaler is simple StandardScaler used on training flattened features
+            X = np.expand_dims(X, 0)
+
+        print(f"Live sequence shape: {X.shape}")  # Debug live input
+        ############################### Predict ##########################################
+        # No global transform to avoid mismatch — assume model uses raw features or the scaler is simple StandardScaler used on training flattened features
         proba = self.model.predict_proba(X)[0]
         signal = 1 if proba >= 0.5 else 0
         logging.info(f"Pred prob {proba:.4f} -> signal {signal}")
-        # Check current positions
+
+
+
+        ########################################### Check current positions
         positions = mt5.positions_get(symbol=SYMBOL)
         if positions and len(positions) >= MAX_POS:
             logging.info("Max positions open. Skipping new entry.")
@@ -363,67 +342,67 @@ class LiveTrader:
             logging.info("Stopping live trader.")
 
 ################################### Main Training and Backtest ##########################################
+###################### Main Training and Backtest (Fixed) ##############################
 def main_train_and_backtest():
     mt5c = MT5Connector(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
     logging.info("Fetching data...")
     df = mt5c.fetch_ohlc(SYMBOL, TIMEFRAME, n_bars=50000)
+    
     fe = FeatureEngineer()
     df = fe.add_indicators(df)
 
-    feature_cols = ['open', 'high', 'low', 'close', 'tick_volume',
-                    'return', 'log_return', 'sma_5', 'sma_20', 'ema_10',
-                    'std_10', 'bb_up', 'bb_down', 'rsi_14']
+    # Features for model
+    feature_cols = ['open', 'high', 'low', 'close', 'tick_volume', 'log_return', 'sma_5', 'sma_20', 'ema_10', 'std_10', 'bb_mid', 'bb_std', 'bb_up', 'bb_down', 'rsi_14']
     df = df.dropna(subset=feature_cols).reset_index(drop=True)
 
-    # Build sequences
+    ################################## Build sequences##########################################
     X, y = fe.create_sequences(df, feature_cols, lookback=LOOKBACK, horizon=PREDICT_HORIZON)
-    n_samples, lb, n_features = X.shape
-    logging.info(f"Built dataset: X {X.shape}, y {y.shape}")
+    print(f"Training sequences: X {X.shape}, y {y.shape}")
 
-    # Flatten features for scaler fitting (fit per feature across time)
+    n_samples, lb, n_features = X.shape
+
+    ################################# Scale features ##########################################
     X_flat = X.reshape(-1, n_features)
     scaler = StandardScaler()
     X_flat_scaled = scaler.fit_transform(X_flat)
 
-    ################################# PCA apply ##########################################
-    pca_components = 0.95  # retain 95% variance
+    ################################# PCA ######################################################
+    pca_components = 0.95
     pca = PCA(n_components=pca_components)
     X_flat_scaled = pca.fit_transform(X_flat_scaled)
-    n_samples     = X.shape[0]
-    n_features    = X_flat_scaled.shape[1]
-    X_scaled      = X_flat_scaled.reshape(n_samples, lb, n_features)
+    n_features = X_flat_scaled.shape[1]
+    X_scaled = X_flat_scaled.reshape(n_samples, lb, n_features)
     logging.info(f"PCA applied: reduced to {n_features} features.")
 
-    ################################# Train/Test split#####################################
+    ################################# Train/Test split #########################################
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=TEST_SIZE, shuffle=False)
     logging.info(f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
 
-    ################################# Build model (choose 'lstm', 'gru', 'rnn')
-    cfg = ModelConfig(lookback=LOOKBACK, n_features=n_features, units=64, dropout=0.2, lr=1e-3)
+    ################################# Build model ##############################################
+    cfg = ModelConfig(lookback=LOOKBACK, n_features=n_features, units=128, dropout=0.2, lr=1e-3)
     rnn_type = 'lstm'
-    model_path = os.path.join(MODEL_DIR, f"{SYMBOL}_{rnn_type}.h5")
-    model = RnnClassifier(cfg, rnn_type=rnn_type)
+    model_path = os.path.join(MODEL_DIR, f"{SYMBOL}_{rnn_type}.keras")
+    model = RnnClassifier(cfg, rnn_type=rnn_type, bidirectional=True, stacked=True)
+    model.summary()
 
-    ################################# Train
+    ################################# Train ####################################################
     logging.info("Training model...")
     model.train(X_train, y_train, X_test, y_test, epochs=EPOCHS, batch_size=BATCH_SIZE, model_path=model_path)
-    model.save(model_path)
+
+    # Save scaler and PCA
     joblib.dump(scaler, os.path.join(MODEL_DIR, f"scaler_{SYMBOL}.pkl"))
     joblib.dump(pca, os.path.join(MODEL_DIR, f"pca_{SYMBOL}.pkl"))
-    logging.info(f"Model and scaler saved to {MODEL_DIR}")
-    
+    logging.info(f"Model, scaler, and PCA saved to {MODEL_DIR}")
 
-    # Evaluate
-    y_pred = model.predict(X_test)
+    ##################################### Evaluate ################################################
+    y_pred = model.predict(X_test)  # Converts probs -> 0/1
     logging.info("Classification report (test):\n" + classification_report(y_test, y_pred))
     logging.info("Accuracy: %.4f" % accuracy_score(y_test, y_pred))
-    # Backtest
-    backtester = SimpleBacktester(df, feature_cols, model, scaler=scaler, lookback=LOOKBACK, horizon=PREDICT_HORIZON)
-    bt_res = backtester.run(X_test, y_test)
-    logging.info(f"Backtest result total_pips: {bt_res['total_pips']:.1f}, win_rate: {bt_res['win_rate']:.3f}")
-
+    
     mt5c.shutdown()
     return model, scaler, pca, feature_cols
+
+
 
 ###################### Run the Main Function ###############################
 if __name__ == "__main__":
@@ -433,3 +412,96 @@ if __name__ == "__main__":
     mt5c = MT5Connector(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
     trader = LiveTrader(mt5c, model, scaler, pca, feature_cols)
     trader.run_loop(interval_seconds=30)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ############################################## Backtester ##########################################
+# class SimpleBacktester:
+#     def __init__(self, df, feature_cols, model: RnnClassifier, scaler=None, lookback=LOOKBACK, horizon=PREDICT_HORIZON):
+#         self.df           = df.reset_index(drop=True).copy()
+#         self.feature_cols = feature_cols
+#         self.model        = model
+#         self.scaler       = scaler
+#         self.lookback     = lookback
+#         self.horizon      = horizon
+
+#     def run(self, X, y, threshold=0.5):
+#         preds_proba = self.model.predict_proba(X)
+#         preds       = (preds_proba >= threshold).astype(int)
+#         # Map each sample index back to dataframe index:
+#         start_idx   = self.lookback
+#         trades      = []
+#         for i, pred in enumerate(preds):
+#             idx = start_idx + i  # this corresponds to the "current" bar used to generate signal
+#             entry_price = self.df.loc[idx, 'close']
+#             # Define SL/TP in price terms (convert pips appropriately)
+#             pip_value = 0.01  # adjust per broker; XAU pip mapping varies, verify with your broker
+#             sl = SL_PIPS * pip_value
+#             tp = TP_PIPS * pip_value
+#             if pred == 1:  # long
+#                 exit_price = entry_price + tp
+#                 stop_price = entry_price - sl
+#             else:  # short
+#                 exit_price = entry_price - tp
+#                 stop_price = entry_price + sl
+
+#             # Simulate next horizon candles to see whether SL or TP hit first
+#             window = self.df.loc[idx+1: idx + self.horizon + 60]  # look ahead window, safety margin
+#             hit = None
+#             hit_price = None
+#             for _, r in window.iterrows():
+#                 high = r['high']
+#                 low = r['low']
+#                 if pred == 1:
+#                     if low <= stop_price:
+#                         hit = 'SL'
+#                         hit_price = stop_price
+#                         break
+#                     if high >= exit_price:
+#                         hit = 'TP'
+#                         hit_price = exit_price
+#                         break
+#                 else:
+#                     if high >= stop_price:
+#                         hit = 'SL'
+#                         hit_price = stop_price
+#                         break
+#                     if low <= exit_price:
+#                         hit = 'TP'
+#                         hit_price = exit_price
+#                         break
+#             # If neither hit in window, mark as 'NoHit' and use close after horizon
+#             if hit is None:
+#                 final_idx = min(idx + self.horizon, len(self.df)-1)
+#                 hit       = 'Close'
+#                 hit_price = self.df.loc[final_idx, 'close']
+
+#             pnl = (hit_price - entry_price) if pred == 1 else (entry_price - hit_price)
+#             trades.append({'idx': idx, 'pred': pred, 'entry': entry_price, 'exit': hit_price, 'type': hit, 'pnl': pnl})
+#         trades_df  = pd.DataFrame(trades)
+#         total_pips = trades_df['pnl'].sum() / 0.01  # convert to pip units (if pip_value=0.01)
+#         wins       = trades_df[trades_df['pnl'] > 0].shape[0]
+#         losses     = trades_df[trades_df['pnl'] <= 0].shape[0]
+#         ret = {
+#             'trades':     trades_df,
+#             'total_pips': total_pips,
+#             'wins':       wins,
+#             'losses':     losses,
+#             'win_rate':   wins / max(1, wins + losses)
+#         }
+#         return ret
