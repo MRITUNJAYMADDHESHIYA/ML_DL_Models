@@ -25,7 +25,7 @@ from tensorflow.keras.layers import Dense, Dropout, LSTM, GRU, SimpleRNN, BatchN
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
 ############################ Global variables ############################################
-SYMBOL           = "BTCUSDm"           # change if your broker uses different symbol
+SYMBOL           = "XAUUSDm"           # change if your broker uses different symbol
 TIMEFRAME        = mt5.TIMEFRAME_M5
 LOOKBACK         = 60                  #60*5 = 300 minutes (5 hours) using this make the prediction
 PREDICT_HORIZON  = 1                   #next 5 minute direction prediction
@@ -38,8 +38,8 @@ os.makedirs(MODEL_DIR, exist_ok=True)  #create model directory if not exists
 
 ########################## Risk Factors ##################################################
 LOT            = 0.01
-SL_PIPS        = 5000      # stop loss in pips (for XAUUSD 1 pip typically = 0.01 on many brokers — verify)
-TP_PIPS        = 5000
+SL_PIPS        = 100      # stop loss in pips (for XAUUSD 1 pip typically = 0.01 on many brokers — verify)
+TP_PIPS        = 100
 MAX_POS        = 1       # max concurrent positions
 RISK_PER_TRADE = 0.01    # fraction of account balance — (used for position sizing if implemented)
 
