@@ -166,6 +166,11 @@ class FeatureEngineer:
         X = np.array(X)
         y = np.array(y)
         print(f"Sequence shapes -> X: {X.shape}, y: {y.shape}")
+        ##############show some samples
+        for i in range(min(3, len(X))):  # show first 3 sequences
+            print(f"\nX[{i}] ->\n{X[i]}")
+            print(f"y[{i}] -> {y[i]}")
+
         return X, y
 
 ####################################### Models(LSTM/GRU/RNN) ##########################################
@@ -190,7 +195,7 @@ class RnnClassifier:
         model = Sequential()
         units = self.cfg.units
 
-        # First RNN layer
+        ######################## First RNN layer
         rnn_layer = None
         if self.rnn_type == 'lstm':
             rnn_layer = LSTM(units, return_sequences=self.stacked, input_shape=(self.cfg.lookback, self.cfg.n_features))
@@ -210,7 +215,7 @@ class RnnClassifier:
         if self.cfg.dropout > 0:
             model.add(Dropout(self.cfg.dropout))
 
-        # Second stacked layer if stacked=True
+        ####################### Second stacked layer if stacked=True
         if self.stacked:
             rnn_layer2 = None
             if self.rnn_type == 'lstm':
@@ -247,8 +252,7 @@ class RnnClassifier:
         callbacks.append(EarlyStopping(monitor='val_loss', patience=6, restore_best_weights=True))
         if model_path:
             callbacks.append(ModelCheckpoint(model_path, save_best_only=True, monitor='val_loss'))
-        hist = self.model.fit(X_train, y_train, validation_data=(X_val, y_val),
-                              epochs=epochs, batch_size=batch_size, callbacks=callbacks, verbose=2)
+        hist = self.model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=epochs, batch_size=batch_size, callbacks=callbacks, verbose=2)
         return hist
 
     def predict_proba(self, X):
@@ -381,7 +385,7 @@ def main_train_and_backtest():
     ################################# Build model ##############################################
     cfg = ModelConfig(lookback=LOOKBACK, n_features=n_features, units=128, dropout=0.2, lr=1e-3)
     rnn_type = 'lstm'
-    model_path = os.path.join(MODEL_DIR, f"{SYMBOL}_{rnn_type}.keras")
+    model_path = os.path.join(MODEL_DIR, f"{SYMBOL}_{rnn_type}.keras")  ########## Model save here (I have to train)
     model = RnnClassifier(cfg, rnn_type=rnn_type, bidirectional=True, stacked=True)
     model.summary()
 
