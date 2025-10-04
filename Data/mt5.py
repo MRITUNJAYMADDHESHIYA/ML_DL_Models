@@ -22,8 +22,8 @@ else:
 
 ############################ Symbol #####################################
 symbol1 = "XAUUSDm"
-timeframe = mt5.TIMEFRAME_M5
-start_time = datetime.now() - timedelta(days=100)
+timeframe = mt5.TIMEFRAME_D1
+start_time = datetime.now() - timedelta(days=1440)
 end_time = datetime.now()
 
 ######################################### values #########################
@@ -34,5 +34,5 @@ def get_ohlc(symbol):
     return rates_df
 
 symbol1_df = get_ohlc(symbol1)
-symbol1_df.to_csv(f'{symbol1.split(".")[0]}_5m.csv', index=False)
+symbol1_df.to_csv(f'{symbol1.split(".")[0]}_1D.csv', index=False)
 print(symbol1_df.head())

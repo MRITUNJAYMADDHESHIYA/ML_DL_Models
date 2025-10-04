@@ -39,9 +39,9 @@ os.makedirs(MODEL_DIR, exist_ok=True)  #create model directory if not exists
 ########################## Risk Factors ##################################################
 LOT            = 0.01
 SL_PIPS        = 100      # stop loss in pips (for XAUUSD 1 pip typically = 0.01 on many brokers — verify)
-TP_PIPS        = 100
-MAX_POS        = 1       # max concurrent positions
-RISK_PER_TRADE = 0.01    # fraction of account balance — (used for position sizing if implemented)
+TP_PIPS        = 150
+MAX_POS        = 1        # max concurrent positions
+RISK_PER_TRADE = 0.01     # fraction of account balance — (used for position sizing if implemented)
 
 ############################ Account Information #########################################
 MT5_LOGIN    = 274242894
@@ -345,12 +345,136 @@ class LiveTrader:
         except KeyboardInterrupt:
             logging.info("Stopping live trader.")
 
+
+############################################## Backtester ##########################################
+class SimpleBacktester:
+    def __init__(self, df, feature_cols, model: RnnClassifier, scaler=None, lookback=LOOKBACK, horizon=PREDICT_HORIZON):
+        self.df           = df.reset_index(drop=True).copy()
+        self.feature_cols = feature_cols
+        self.model        = model
+        self.scaler       = scaler
+        self.lookback     = lookback
+        self.horizon      = horizon
+
+    def run(self, X, y, threshold=0.5, save_path=None, plot=True):
+        preds_proba = self.model.predict_proba(X)
+        preds       = (preds_proba >= threshold).astype(int)
+
+        #########Map each sample index back to dataframe index:
+        start_idx   = self.lookback
+        trades      = []
+
+        for i, pred in enumerate(preds):
+            idx         = start_idx + i  # this corresponds to the "current" bar used to generate signal
+            entry_price = self.df.loc[idx, 'close']
+            pip_value   = 0.01  
+            sl          = SL_PIPS * pip_value
+            tp          = TP_PIPS * pip_value
+            if pred == 1:  # long
+                exit_price = entry_price + tp
+                stop_price = entry_price - sl
+            else:  # short
+                exit_price = entry_price - tp
+                stop_price = entry_price + sl
+
+            # Simulate next horizon candles to see whether SL or TP hit first
+            window    = self.df.loc[idx+1: idx + self.horizon + 60]  # look ahead window, safety margin
+            hit       = None
+            hit_price = None
+            for _, r in window.iterrows():
+                high = r['high']
+                low  = r['low']
+                if pred == 1:
+                    if low <= stop_price:
+                        hit = 'SL'
+                        hit_price = stop_price
+                        break
+                    if high >= exit_price:
+                        hit = 'TP'
+                        hit_price = exit_price
+                        break
+                else:
+                    if high >= stop_price:
+                        hit = 'SL'
+                        hit_price = stop_price
+                        break
+                    if low <= exit_price:
+                        hit = 'TP'
+                        hit_price = exit_price
+                        break
+            # If neither hit in window, mark as 'NoHit' and use close after horizon
+            if hit is None:
+                final_idx = min(idx + self.horizon, len(self.df)-1)
+                hit       = 'Close'
+                hit_price = self.df.loc[final_idx, 'close']
+
+            pnl = (hit_price - entry_price) if pred == 1 else (entry_price - hit_price)
+            time_col = 'time'
+            if 'time' not in self.df.columns:
+                if 'datetime' in self.df.columns:
+                    time_col = 'datetime'
+                else:
+                    # fallback to index
+                    self.df = self.df.reset_index()
+                    time_col = 'index'
+
+            trades.append({
+                'idx': idx,
+                'time': self.df.loc[idx, time_col],  # safe reference
+                'pred': pred,
+                'entry': entry_price,
+                'exit': hit_price,
+                'type': hit,
+                'pnl': pnl
+            })
+
+        trades_df  = pd.DataFrame(trades)
+        total_pips = trades_df['pnl'].sum() / 0.01  # convert to pip units (if pip_value=0.01)
+        wins       = trades_df[trades_df['pnl'] > 0].shape[0]
+        losses     = trades_df[trades_df['pnl'] <= 0].shape[0]
+        ret = {
+            'trades':     trades_df,
+            'total_pips': total_pips,
+            'wins':       wins,
+            'losses':     losses,
+            'win_rate':   wins / max(1, wins + losses)
+        }
+
+        # Save trades to CSV if path provided
+        if save_path:
+            trades_df.to_csv(save_path, index=False)
+            print(f"Trades saved to {save_path}")
+
+        # Plot equity curve if enabled
+        if plot:
+            import matplotlib.pyplot as plt
+            trades_df['cum_pnl'] = trades_df['pnl'].cumsum()
+            plt.figure(figsize=(12,6))
+            plt.plot(trades_df['time'], trades_df['cum_pnl'], label="Equity Curve")
+            plt.axhline(0, color='red', linestyle='--')
+            plt.xlabel("Time")
+            plt.ylabel("Cumulative PnL")
+            plt.title("Backtest Equity Curve")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
+
+        return ret
+
+
 ################################### Main Training and Backtest ##########################################
 ###################### Main Training and Backtest (Fixed) ##############################
-def main_train_and_backtest():
-    mt5c = MT5Connector(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
-    logging.info("Fetching data...")
-    df = mt5c.fetch_ohlc(SYMBOL, TIMEFRAME, n_bars=50000)
+def main_train_and_backtest(csv_path="C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/Data/XAUUSDm_5m.csv"):
+
+    ######load data from CSV instead of MT5 for training
+    logging.info("Loading data from CSV...")
+    df = pd.read_csv(csv_path, parse_dates=['time'])
+    logging.info(f"Data loaded: {df.shape[0]} rows.")
+
+
+    # mt5c = MT5Connector(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
+    # logging.info("Fetching data...")
+    # df = mt5c.fetch_ohlc(SYMBOL, TIMEFRAME, n_bars=50000)
     
     fe = FeatureEngineer()
     df = fe.add_indicators(df)
@@ -403,109 +527,51 @@ def main_train_and_backtest():
     logging.info("Classification report (test):\n" + classification_report(y_test, y_pred))
     logging.info("Accuracy: %.4f" % accuracy_score(y_test, y_pred))
     
-    mt5c.shutdown()
-    return model, scaler, pca, feature_cols
+    #mt5c.shutdown()
+    return model, scaler, pca, feature_cols, df
 
 
 
 ###################### Run the Main Function ###############################
 if __name__ == "__main__":
 
-    model, scaler, pca, feature_cols = main_train_and_backtest()
+    model, scaler, pca, feature_cols, df = main_train_and_backtest("C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/Data/XAUUSDm_5m.csv")
+    backtest = SimpleBacktester(df, feature_cols, model, scaler)
+    X, y     = FeatureEngineer().create_sequences(df, feature_cols, lookback=LOOKBACK, horizon=PREDICT_HORIZON)
 
-    mt5c = MT5Connector(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
-    trader = LiveTrader(mt5c, model, scaler, pca, feature_cols)
-    trader.run_loop(interval_seconds=30)
+    ####### Apply same scaler+pca
+    n_samples, lb, n_features = X.shape
+    X_flat = X.reshape(-1, n_features)
+    X_scaled = scaler.transform(X_flat)
+    X_pca = pca.transform(X_scaled)
+    X_final = X_pca.reshape(n_samples, lb, X_pca.shape[1])
 
-
-
-
-
-
-
-
-
-
-
-
+    results = backtest.run(X_final, y)
+    print("Backtest Results:")
+    print(results['trades'].head())
+    print(f"Total Pips: {results['total_pips']}, Win Rate: {results['win_rate']:.2%}")
 
 
 
+    # mt5c     = MT5Connector(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
+    # trader   = LiveTrader(mt5c, model, scaler, pca, feature_cols)    
+    # trader.run_loop(interval_seconds=30)
 
 
 
-# ############################################## Backtester ##########################################
-# class SimpleBacktester:
-#     def __init__(self, df, feature_cols, model: RnnClassifier, scaler=None, lookback=LOOKBACK, horizon=PREDICT_HORIZON):
-#         self.df           = df.reset_index(drop=True).copy()
-#         self.feature_cols = feature_cols
-#         self.model        = model
-#         self.scaler       = scaler
-#         self.lookback     = lookback
-#         self.horizon      = horizon
 
-#     def run(self, X, y, threshold=0.5):
-#         preds_proba = self.model.predict_proba(X)
-#         preds       = (preds_proba >= threshold).astype(int)
-#         # Map each sample index back to dataframe index:
-#         start_idx   = self.lookback
-#         trades      = []
-#         for i, pred in enumerate(preds):
-#             idx = start_idx + i  # this corresponds to the "current" bar used to generate signal
-#             entry_price = self.df.loc[idx, 'close']
-#             # Define SL/TP in price terms (convert pips appropriately)
-#             pip_value = 0.01  # adjust per broker; XAU pip mapping varies, verify with your broker
-#             sl = SL_PIPS * pip_value
-#             tp = TP_PIPS * pip_value
-#             if pred == 1:  # long
-#                 exit_price = entry_price + tp
-#                 stop_price = entry_price - sl
-#             else:  # short
-#                 exit_price = entry_price - tp
-#                 stop_price = entry_price + sl
 
-#             # Simulate next horizon candles to see whether SL or TP hit first
-#             window = self.df.loc[idx+1: idx + self.horizon + 60]  # look ahead window, safety margin
-#             hit = None
-#             hit_price = None
-#             for _, r in window.iterrows():
-#                 high = r['high']
-#                 low = r['low']
-#                 if pred == 1:
-#                     if low <= stop_price:
-#                         hit = 'SL'
-#                         hit_price = stop_price
-#                         break
-#                     if high >= exit_price:
-#                         hit = 'TP'
-#                         hit_price = exit_price
-#                         break
-#                 else:
-#                     if high >= stop_price:
-#                         hit = 'SL'
-#                         hit_price = stop_price
-#                         break
-#                     if low <= exit_price:
-#                         hit = 'TP'
-#                         hit_price = exit_price
-#                         break
-#             # If neither hit in window, mark as 'NoHit' and use close after horizon
-#             if hit is None:
-#                 final_idx = min(idx + self.horizon, len(self.df)-1)
-#                 hit       = 'Close'
-#                 hit_price = self.df.loc[final_idx, 'close']
 
-#             pnl = (hit_price - entry_price) if pred == 1 else (entry_price - hit_price)
-#             trades.append({'idx': idx, 'pred': pred, 'entry': entry_price, 'exit': hit_price, 'type': hit, 'pnl': pnl})
-#         trades_df  = pd.DataFrame(trades)
-#         total_pips = trades_df['pnl'].sum() / 0.01  # convert to pip units (if pip_value=0.01)
-#         wins       = trades_df[trades_df['pnl'] > 0].shape[0]
-#         losses     = trades_df[trades_df['pnl'] <= 0].shape[0]
-#         ret = {
-#             'trades':     trades_df,
-#             'total_pips': total_pips,
-#             'wins':       wins,
-#             'losses':     losses,
-#             'win_rate':   wins / max(1, wins + losses)
-#         }
-#         return ret
+
+
+
+
+
+
+
+
+
+
+
+
+

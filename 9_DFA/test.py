@@ -6,27 +6,20 @@
 #4.a=0.5-->uncorrelated
 #5.a>0.5-->trend-following
 
-"""
-dfa_strategy_backtest.py
-
-Complete DFA-based rolling strategy backtest (long-only).
-Usage: adjust CSV_PATH, TIMEFRAME_MINUTES, ROLLING_DAYS, and thresholds as desired.
-"""
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import timedelta
 
 # --------------------- User parameters ---------------------
-CSV_PATH = r"C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/XAUUSDm_1H.csv"
-TIMEFRAME_MINUTES = 5            # <-- set to 5 for 5-minute bars
-ROLLING_DAYS = 30                # rolling window length in days for DFA
-ALPHA_ENTER = 0.60               # enter long when alpha > ALPHA_ENTER
-STOP_LOSS_PCT = 0.05             # 5% stop loss
-TAKE_PROFIT_PCT = 0.10           # 10% take profit
-MIN_SCALE = 4                    # minimal scale window for DFA
-PLOT_RESULTS = True
+CSV_PATH          = r"C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/XAUUSDm_1D.csv"
+TIMEFRAME_MINUTES = 5                  # <-- set to 5 for 5-minute bars
+ROLLING_DAYS      = 30                 # rolling window length in days for DFA
+ALPHA_ENTER       = 0.60               # enter long when alpha > ALPHA_ENTER
+STOP_LOSS_PCT     = 0.05               # 5% stop loss
+TAKE_PROFIT_PCT   = 0.10               # 10% take profit
+MIN_SCALE         = 4                  # minimal scale window for DFA
+PLOT_RESULTS      = True
 # -----------------------------------------------------------
 
 # ---------- DFA implementation (robust) --------------------
@@ -64,11 +57,6 @@ def fluctuation(y, scales):
     return np.array(out)
 
 def dfa(x, scale_lim=[1,3], scale_dens=0.25, plot=False):
-    """
-    x: 1D returns array (not cumulative). Returns DFA exponent alpha.
-    scale_lim: [log10(min_scale), log10(max_scale)]
-    scale_dens: spacing density between the log scales.
-    """
     x = np.asarray(x)
     if x.size < MIN_SCALE:
         return np.nan
@@ -132,11 +120,6 @@ def max_drawdown(equity_series):
 def backtest(df, alpha_series, entry_threshold=ALPHA_ENTER,
              stop_loss=STOP_LOSS_PCT, take_profit=TAKE_PROFIT_PCT,
              timeframe_minutes=TIMEFRAME_MINUTES):
-    """
-    df: DataFrame must include 'close' and ideally 'high','low'. Index is datetime.
-    alpha_series: series aligned with df.index giving rolling DFA alpha (can have NaN).
-    Returns: trades list and equity time series (per bar).
-    """
     prices = df['close'].values
     has_HL = ('high' in df.columns) and ('low' in df.columns)
     highs = df['high'].values if has_HL else None
