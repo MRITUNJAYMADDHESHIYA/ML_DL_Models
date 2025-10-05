@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from numpy.fft import fft, ifft
 
 # Step 1: Load CSV
-df = pd.read_csv("C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/8_Fourier/SOL_1H.csv")   # replace with your file
+df = pd.read_csv("C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/Data/SOL_1H.csv")   # replace with your file
 df['Date'] = pd.to_datetime(df['open_time'])
 df.set_index('Date', inplace=True)
 

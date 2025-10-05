@@ -1,4 +1,5 @@
-#1. I want to see the x and y as output after creating sequences.
+#1. Win % - 44% on 1:1 Risk/Reward
+#2. I have to work on it
 
 import os
 import time
@@ -39,7 +40,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)  #create model directory if not exists
 ########################## Risk Factors ##################################################
 LOT            = 0.01
 SL_PIPS        = 100      # stop loss in pips (for XAUUSD 1 pip typically = 0.01 on many brokers — verify)
-TP_PIPS        = 150
+TP_PIPS        = 100
 MAX_POS        = 1        # max concurrent positions
 RISK_PER_TRADE = 0.01     # fraction of account balance — (used for position sizing if implemented)
 
@@ -466,7 +467,7 @@ class SimpleBacktester:
 ###################### Main Training and Backtest (Fixed) ##############################
 def main_train_and_backtest(csv_path="C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/Data/XAUUSDm_5m.csv"):
 
-    ######load data from CSV instead of MT5 for training
+    ####################load data from CSV instead of MT5 for training
     logging.info("Loading data from CSV...")
     df = pd.read_csv(csv_path, parse_dates=['time'])
     logging.info(f"Data loaded: {df.shape[0]} rows.")
@@ -535,6 +536,7 @@ def main_train_and_backtest(csv_path="C:/Users/Mritunjay Maddhesiya/OneDrive/Des
 ###################### Run the Main Function ###############################
 if __name__ == "__main__":
 
+    ################ Code for Backtesting##########################
     model, scaler, pca, feature_cols, df = main_train_and_backtest("C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/Data/XAUUSDm_5m.csv")
     backtest = SimpleBacktester(df, feature_cols, model, scaler)
     X, y     = FeatureEngineer().create_sequences(df, feature_cols, lookback=LOOKBACK, horizon=PREDICT_HORIZON)
@@ -551,8 +553,8 @@ if __name__ == "__main__":
     print(results['trades'].head())
     print(f"Total Pips: {results['total_pips']}, Win Rate: {results['win_rate']:.2%}")
 
-
-
+    ####################### Code for live trading ##########################
+    # model, scaler, pca, feature_cols, df = main_train_and_backtest()
     # mt5c     = MT5Connector(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
     # trader   = LiveTrader(mt5c, model, scaler, pca, feature_cols)    
     # trader.run_loop(interval_seconds=30)
