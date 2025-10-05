@@ -235,7 +235,7 @@ class RnnClassifier:
             if self.cfg.dropout > 0:
                 model.add(Dropout(self.cfg.dropout))
 
-        # Dense layers
+        ################ Dense layers(Modify as needed)
         model.add(Dense(64, activation='relu'))
         model.add(Dropout(self.cfg.dropout))
         model.add(Dense(32, activation='relu'))
