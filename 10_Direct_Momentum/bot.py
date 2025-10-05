@@ -36,20 +36,16 @@ MT5_PASSWORD = "Mritunjay@76519"
 MT5_SERVER   = "Exness-MT5Trial6"
 
 ########################### Logging Configuration #########################
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", handlers=[logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
 
 ############################ MT5 Connector ################################
 class MT5Connector:
     def __init__(self, login=None, password=None, server=None):
-        self.login = login
+        self.login    = login
         self.password = password
-        self.server = server
+        self.server   = server
         self._init_mt5()
 
     def _init_mt5(self):
@@ -78,7 +74,7 @@ class MT5Connector:
         if not symbol_info:
             raise RuntimeError(f"Symbol {symbol} not found.")
 
-        tick = mt5.symbol_info_tick(symbol)
+        tick  = mt5.symbol_info_tick(symbol)
         price = tick.ask if order_type == mt5.ORDER_TYPE_BUY else tick.bid
 
         point = symbol_info.point
@@ -86,17 +82,17 @@ class MT5Connector:
         tp = price + tp_pips * point if order_type == mt5.ORDER_TYPE_BUY else price - tp_pips * point
 
         request = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": symbol,
-            "volume": float(volume),
-            "type": int(order_type),
-            "price": float(price),
-            "sl": float(sl),
-            "tp": float(tp),
-            "deviation": 20,
-            "magic": 123456,
-            "comment": "GradientBoost_Auto",
-            "type_time": mt5.ORDER_TIME_GTC,
+            "action":       mt5.TRADE_ACTION_DEAL,
+            "symbol":       symbol,
+            "volume":       float(volume),
+            "type":         int(order_type),
+            "price":        float(price),
+            "sl":           float(sl),
+            "tp":           float(tp),
+            "deviation":    20,
+            "magic":        123456,
+            "comment":      "GradientBoost_Auto",
+            "type_time":    mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC
         }
 
@@ -113,20 +109,20 @@ class MT5Connector:
             return
         for pos in positions:
             order_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-            tick = mt5.symbol_info_tick(symbol)
-            price = tick.bid if order_type == mt5.ORDER_TYPE_SELL else tick.ask
+            tick       = mt5.symbol_info_tick(symbol)
+            price      = tick.bid if order_type == mt5.ORDER_TYPE_SELL else tick.ask
 
             close_request = {
-                "action": mt5.TRADE_ACTION_DEAL,
-                "position": pos.ticket,
-                "symbol": symbol,
-                "volume": pos.volume,
-                "type": order_type,
-                "price": price,
-                "deviation": 20,
-                "magic": 123456,
-                "comment": "Auto Close",
-                "type_time": mt5.ORDER_TIME_GTC,
+                "action":       mt5.TRADE_ACTION_DEAL,
+                "position":     pos.ticket,
+                "symbol":       symbol,
+                "volume":       pos.volume,
+                "type":         order_type,
+                "price":        price,
+                "deviation":    20,
+                "magic":        123456,
+                "comment":      "Auto Close",
+                "type_time":    mt5.ORDER_TIME_GTC,
                 "type_filling": mt5.ORDER_FILLING_IOC
             }
             result = mt5.order_send(close_request)
@@ -232,14 +228,14 @@ class SimpleBacktester:
         self.horizon      = horizon
 
     def run(self, threshold=0.7, save_path=None, plot=True):
-        X = self.df[self.feature_cols]
+        X        = self.df[self.feature_cols]
         X_scaled = self.scaler.transform(X)
-        probs = self.model.predict_proba(X_scaled)
-        preds = (probs[:, 1] >= threshold).astype(int)
+        probs    = self.model.predict_proba(X_scaled)
+        preds    = (probs[:, 1] >= threshold).astype(int)
 
         trades = []
         for i in range(len(preds) - self.horizon):
-            pred = preds[i]
+            pred  = preds[i]
             entry = self.df.loc[i, "close"]
             #####for PIP_VALUE calculation when connected to MT5
             # symbol_info = mt5.symbol_info(SYMBOL)
@@ -281,12 +277,12 @@ class SimpleBacktester:
 
             pnl = hit_price - entry if pred == 1 else entry - hit_price
             trades.append({
-                "time": self.df.loc[i, "time"],
+                "time":   self.df.loc[i, "time"],
                 "pred": "BUY" if pred == 1 else "SELL",
-                "entry": entry,
-                "exit": hit_price,
+                "entry":  entry,
+                "exit":   hit_price,
                 "result": hit,
-                "pnl": pnl
+                "pnl":    pnl
             })
 
         trades_df = pd.DataFrame(trades)
