@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 MLBot for XAUUSD / BTCUSD 1-min using XGBoost with MT5 execution.
 Modified to place real trades (PAPER_TRADING=False) and improved MT5 init & order handling.
