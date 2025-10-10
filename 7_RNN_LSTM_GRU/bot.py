@@ -20,10 +20,10 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 from sklearn.decomposition import PCA
 
 import tensorflow as tf
-from tensorflow.keras.layers import Bidirectional
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Dense, Dropout, LSTM, GRU, SimpleRNN, BatchNormalization
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.layers import Bidirectional
+from keras.models import Sequential, load_model
+from keras.layers import Dense, Dropout, LSTM, GRU, SimpleRNN, BatchNormalization
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 
 ############################ Global variables ############################################
 SYMBOL           = "XAUUSDm"           # change if your broker uses different symbol
