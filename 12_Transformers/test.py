@@ -12,7 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 ###################Data Preparation###################
 def load_data(file_path):
     df = pd.read_csv(file_path)
-    df['Datatime'] = pd.to_datetime(df['Datetime'], format='%d.%m.%Y %H:%M:%S.%f')
+    df['Datatime'] = pd.to_datetime(df['Datetime'], format='%Y-%m-%d %H:%M:%S')
     df.sort_values('Datetime', inplace=True)
     df.reset_index(drop=True, inplace=True)
     return df
@@ -227,7 +227,7 @@ def evaluate_model(model, test_loader, scaler, feature_cols, target_col_idx,
 
 ################ Main function for runining the code ################
 def main():
-    file_path      = "C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/12_Transformers/EURUSD_Candlestick_1_Hour_BID_01.07.2020-15.07.2023.csv"
+    file_path      = "C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/MT5/Data/XAUUSDm_1H.csv"
     
     # Load and preprocess data
     df                                = load_data(file_path)
