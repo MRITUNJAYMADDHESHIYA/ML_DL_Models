@@ -543,10 +543,10 @@ if __name__ == "__main__":
 
     ####### Apply same scaler+pca
     n_samples, lb, n_features = X.shape
-    X_flat = X.reshape(-1, n_features)
+    X_flat   = X.reshape(-1, n_features)
     X_scaled = scaler.transform(X_flat)
-    X_pca = pca.transform(X_scaled)
-    X_final = X_pca.reshape(n_samples, lb, X_pca.shape[1])
+    X_pca    = pca.transform(X_scaled)
+    X_final  = X_pca.reshape(n_samples, lb, X_pca.shape[1])
 
     results = backtest.run(X_final, y)
     print("Backtest Results:")
