@@ -12,6 +12,6 @@
 #     Gradient Calculation:-  The network computes the gradients of the loss function with respect to each weight and bias in the network. This involves applying the chain rule of calculus to find out how much each part of the output error can be attributed to each weight and bias.
 #     Weight Update:-         Once the gradients are calculated, the weights and biases are updated using an optimization algorithm like stochastic gradient descent (SGD). The weights are adjusted in the opposite direction of the gradient to minimize the loss. The size of the step taken in each update is determined by the learning rate.
 
-## Forward -> loss calculation -> back -> weight update
+## Forward propagation -> loss calculation -> back propagation-> weight update
 
 
